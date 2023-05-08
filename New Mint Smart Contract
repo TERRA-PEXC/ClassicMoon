@@ -1,0 +1,183 @@
+use cosmwasm_std::{
+    to_binary, Addr, Binary, Coin, Deps, DepsMut, Env, MessageInfo, Response, StdResult, Uint128,
+    WasmMsg,
+};
+use cw20::{Cw20Coin, Cw20Contract, Cw20ExecuteMsg};
+use cw_storage_plus::Map;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+
+use crate::error::ContractError;
+use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
+
+pub const MAX_SUPPLY: Uint128 = Uint128(6_800_000_000_000);
+pub const BURN_INTERVAL: u64 = 15 * 24 * 60 * 60; // 15 days in seconds
+pub const SWAP_FEE: u128 = 1_000; // 0.1% = 1_000 / 1_000_000
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct State {
+    pub token_address: Addr,
+}
+
+pub const STATE: Map<&[u8], State> = Map::new("state");
+
+pub fn instantiate(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    msg: InstantiateMsg,
+) -> Result<Response, ContractError> {
+    // Instantiate the CW20 token with the provided settings
+    let token_init_msg = Cw20ExecuteMsg::Instantiate {
+        name: msg.name.clone(),
+        symbol: msg.symbol.clone(),
+        decimals: msg.decimals,
+        initial_balances: vec![],
+        mint: None,
+    };
+
+    let cw20_addr = deps.api.addr_validate(&msg.cw20_address)?;
+
+    let submsg = WasmMsg::Execute {
+        contract_addr: cw20_addr.clone(),
+        msg: to_binary(&token_init_msg)?,
+        funds: vec![],
+    }
+    .into();
+
+    let mut res = Response::new();
+    res.messages.push(submsg);
+
+    // Mint the maximum supply
+    let mint_msg = ExecuteMsg::Mint {
+        recipient: info.sender.clone(),
+        amount: MAX_SUPPLY,
+    };
+    let mint_response = execute(deps, env.clone(), info.clone(), mint_msg)?;
+    res.messages.extend_from_slice(&mint_response.messages);
+
+    // Set up automatic burning
+    let burn_msg = ExecuteMsg::Burn {
+        amount: (MAX_SUPPLY.u128() * 25) / 100,
+    };
+
+    let submsg = WasmMsg::Execute {
+        contract_addr: env.contract.address.clone(),
+        msg: to_binary(&burn_msg)?,
+        funds: vec![],
+    }
+    .into();
+
+    res.messages.push(submsg);
+
+    // Save the token address in the state
+    STATE.save(
+        deps.storage,
+        b"config",
+        &State {
+            token_address: cw20_addr,
+        },
+    )?;
+
+    Ok(res)
+}
+
+pub fn execute(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    msg: ExecuteMsg,
+) -> Result<Response, ContractError> {
+    match msg {
+        ExecuteMsg::Mint { recipient, amount } => {
+            let state = STATE.load(deps.storage)?;
+            let cw20_addr = state.token_address.clone();
+            let mint_msg = Cw20ExecuteMsg::Mint {
+                recipient: recipient.clone(),
+                amount: Uint128::new(amount),
+              };
+        let submsg = WasmMsg::Execute {
+            contract_addr: cw20_addr,
+            msg: to_binary(&mint_msg)?,
+            funds: vec![],
+        }
+        .into();
+
+        let mut res = Response::new();
+        res.messages.push(submsg);
+        Ok(res)
+    }
+    ExecuteMsg::Burn { amount } => {
+        let state = STATE.load(deps.storage)?;
+        let cw20_addr = state.token_address.clone();
+        let burn_msg = Cw20ExecuteMsg::Burn {
+            amount: Uint128::new(amount),
+        };
+
+        let submsg = WasmMsg::Execute {
+            contract_addr: cw20_addr,
+            msg: to_binary(&burn_msg)?,
+            funds: vec![],
+        }
+        .into();
+
+        let mut res = Response::new();
+        res.messages.push(submsg);
+        Ok(res)
+    }
+    ExecuteMsg::Swap { recipient, amount } => {
+        let state = STATE.load(deps.storage)?;
+        let cw20_addr = state.token_address.clone();
+        let fee_amount = Uint128::new(amount * SWAP_FEE / 1_000_000);
+        let swap_amount = Uint128::new(amount - fee_amount.u128());
+
+        // Send the swap amount to the recipient
+        let send_msg = Cw20ExecuteMsg::Transfer {
+            recipient: recipient.clone(),
+            amount: swap_amount,
+        };
+
+        let submsg = WasmMsg::Execute {
+            contract_addr: cw20_addr.clone(),
+            msg: to_binary(&send_msg)?,
+            funds: vec![],
+        }
+        .into();
+
+        // Distribute the fee to the community events wallet
+        let send_fee_msg = Cw20ExecuteMsg::Transfer {
+            recipient: info.sender.clone(),
+            amount: fee_amount,
+        };
+
+        let submsg_fee = WasmMsg::Execute {
+            contract_addr: cw20_addr,
+            msg: to_binary(&send_fee_msg)?,
+            funds: vec![],
+        }
+        .into();
+
+        let mut res = Response::new();
+        res.messages.push(submsg);
+        res.messages.push(submsg_fee);
+        Ok(res)
+    }
+}
+}
+
+pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
+match msg {
+QueryMsg::TokenInfo {} => {
+let state = STATE.load(deps.storage)?;
+let cw20_addr = state.token_address.clone();
+let token = Cw20Contract(deps.api.addr_validate(&cw20_addr.to_string())?);
+token.info(deps.as_ref())
+}
+QueryMsg::TokenBalance { address } => {
+let state = STATE.load(deps.storage)?;
+let cw20_addr = state.token_address.clone();
+let token = Cw20Contract(deps.api.addr_validate(&cw20_addr.to_string())?);
+token.balance(deps.as_ref(), deps.api.addr_validate(&address)?)
+}
+}
+}
