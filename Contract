@@ -27,42 +27,49 @@ pub fn instantiate(
     let initial_supply = Uint128::from(TOKEN_TOTAL_SUPPLY);
 
     let total_allocation = initial_supply * 2 / 100;
+let community_events_allocation = initial_supply * 4 / 100;
 
-    let owner_allocation = total_allocation;
-    let developer_allocation = total_allocation;
-    let marketing_team_allocation = total_allocation;
+let owner_allocation = total_allocation;
+let developer_allocation = total_allocation;
+let marketing_team_allocation = total_allocation;
 
-    let cw20_instantiate_msg = cw20_base::msg::InstantiateMsg {
-        name: TOKEN_NAME.to_string(),
-        symbol: TOKEN_SYMBOL.to_string(),
-        decimals: TOKEN_DECIMALS,
-        initial_balances: vec![
-            {
-                (
-                    owner.clone(),
-                    owner_allocation,
-                )
-            },
-            {
-                (
-                    developer.clone(),
-                    developer_allocation,
-                )
-            },
-            {
-                (
-                    marketing_team.clone(),
-                    marketing_team_allocation,
-                )
-            },
-        ],
-        mint: {
-            let minter = owner.clone();
-            let cap = Some(initial_supply);
-            cw20_base::msg::MinterResponse { minter, cap }
+let cw20_instantiate_msg = cw20_base::msg::InstantiateMsg {
+    name: TOKEN_NAME.to_string(),
+    symbol: TOKEN_SYMBOL.to_string(),
+    decimals: TOKEN_DECIMALS,
+    initial_balances: vec![
+        {
+            (
+                owner.clone(),
+                owner_allocation,
+            )
         },
-        marketing: None,
-    };
+        {
+            (
+                developer.clone(),
+                developer_allocation,
+            )
+        },
+        {
+            (
+                marketing_team.clone(),
+                marketing_team_allocation,
+            )
+        },
+        {
+            (
+                msg.community_events_address.clone(),
+                community_events_allocation,
+            )
+        },
+    ],
+    mint: {
+        let minter = owner.clone();
+        let cap = Some(initial_supply);
+        cw20_base::msg::MinterResponse { minter, cap }
+    },
+    marketing: None,
+};
 
     cw20_instantiate(deps, _env, info, cw20_instantiate_msg)?;
 
@@ -156,6 +163,7 @@ impl From<Cw20ExecuteMsg> for ExecuteMsg {
 pub struct InstantiateMsg {
     pub developer: String,
     pub marketing_team: String,
+    pub community_events_address: String,
 }
 
 }
