@@ -1,0 +1,203 @@
+use cosmwasm_std::{
+    attr, entry_point, to_binary, Addr, BankMsg, Binary, Coin, Deps, DepsMut, Env, MessageInfo,
+    Response, StdResult, Uint128,
+};
+use cw20_base::cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg};
+use cw20_base::contract::{execute_update_admin, instantiate as cw20_instantiate};
+
+use crate::error::ContractError;
+use crate::msg::{ExecuteMsg, InstantiateMsg};
+use crate::state::Config;
+
+pub const TOKEN_NAME: &str = "ClassicMoon";
+pub const TOKEN_SYMBOL: &str = "CLSM";
+pub const TOKEN_DECIMALS: u8 = 18;
+pub const TOKEN_TOTAL_SUPPLY: u128 = 6_800_000_000_000_000_000;
+
+#[entry_point]
+pub fn instantiate(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    msg: InstantiateMsg,
+) -> Result<Response, ContractError> {
+    let owner = info.sender;
+    let developer = Addr::unchecked(&msg.developer);
+    let marketing_team = Addr::unchecked(&msg.marketing_team);
+    let initial_supply = Uint128::from(TOKEN_TOTAL_SUPPLY);
+
+    let total_allocation = initial_supply * 2 / 100;
+
+    let owner_allocation = total_allocation;
+    let developer_allocation = total_allocation;
+    let marketing_team_allocation = total_allocation;
+
+    let cw20_instantiate_msg = cw20_base::msg::InstantiateMsg {
+        name: TOKEN_NAME.to_string(),
+        symbol: TOKEN_SYMBOL.to_string(),
+        decimals: TOKEN_DECIMALS,
+        initial_balances: vec![
+            {
+                (
+                    owner.clone(),
+                    owner_allocation,
+                )
+            },
+            {
+                (
+                    developer.clone(),
+                    developer_allocation,
+                )
+            },
+            {
+                (
+                    marketing_team.clone(),
+                    marketing_team_allocation,
+                )
+            },
+        ],
+        mint: {
+            let minter = owner.clone();
+            let cap = Some(initial_supply);
+            cw20_base::msg::MinterResponse { minter, cap }
+        },
+        marketing: None,
+    };
+
+    cw20_instantiate(deps, _env, info, cw20_instantiate_msg)?;
+
+    let config = Config {
+        owner: owner.to_string(),
+    };
+    deps.storage.set(b"config", &config)?;
+
+    Ok(Response::default())
+}
+
+#[entry_point]
+pub fn execute(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    msg: ExecuteMsg,
+) -> Result<Response, ContractError> {
+    match msg {
+        ExecuteMsg::Cw20(msg) => {
+            let cw20_msg: Cw20ExecuteMsg = msg.into();
+            cw20_base::contract::execute(deps, env, info, cw20_msg)
+                .map_err(ContractError::Cw20Error)
+        }
+        ExecuteMsg::UpdateAdmin { admin } => execute_update_admin(deps, info, admin),
+        ExecuteMsg::RenounceOwnership {} => execute_renounce_ownership(deps, info),
+    }
+}
+
+pub fn execute_renounce_ownership(
+    deps: DepsMut,
+    info: MessageInfo,
+) -> Result<Response, ContractError> {
+    let mut config: Config = deps.storage.load(b"config")?;
+
+    if
+    info.sender != Addr::unchecked(&config.owner) {
+    return Err(ContractError::Unauthorized {});
+    }
+    config.owner = String::new();
+    deps.storage.set(b"config", &config)?;
+
+    Ok(Response::new().add_attribute("action", "renounce_ownership"))
+    }
+
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn query(deps: Deps, _env: Env, msg: cw20_base::msg::QueryMsg) -> StdResult<Binary> {
+cw20_base::contract::query(deps, _env, msg)
+}
+
+// Error conversion functions
+mod error {
+use super::ContractError;
+use cosmwasm_std::{StdError, StdResult, Uint128};
+
+pub fn to_cw20_error(err: StdError) -> ContractError {
+    ContractError::Cw20Error(err)
+}
+
+pub fn into_cw20_result<T>(res: StdResult<T>) -> Result<T, ContractError> {
+    res.map_err(to_cw20_error)
+}
+
+pub fn sum_cw20_result(res: StdResult<Uint128>) -> Uint128 {
+    res.unwrap_or_else(|_| Uint128::zero())
+}
+
+}
+
+// Messages
+mod msg {
+use cosmwasm_std::Binary;
+use cw20_base::msg::Cw20ExecuteMsg;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub enum ExecuteMsg {
+    Cw20(Cw20ExecuteMsg),
+    UpdateAdmin { admin: String },
+    RenounceOwnership {},
+}
+
+impl From<Cw20ExecuteMsg> for ExecuteMsg {
+    fn from(msg: Cw20ExecuteMsg) -> Self {
+        ExecuteMsg::Cw20(msg)
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct InstantiateMsg {
+    pub developer: String,
+    pub marketing_team: String,
+}
+
+}
+
+// State
+mod state {
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct Config {
+    pub owner: String,
+}
+
+}
+
+#[cfg(test)]
+mod tests {
+use super::*;
+use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
+use cosmwasm_std::{coins, from_binary};
+
+#[test]
+fn proper_initialization() {
+    let mut deps = mock_dependencies(&[]);
+    let env = mock_env();
+    let info = mock_info("creator", &coins(2, "token"));
+    let msg = InstantiateMsg {
+        developer: "developer".into(),
+        marketing_team: "marketing_team".into(),
+    };
+
+    let res = instantiate(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
+    assert_eq!(0, res.messages.len());
+
+    let config: Config = deps.storage.load(b"config").unwrap();
+    assert_eq!(config.owner, "creator");
+
+    let cw20_msg = cw20_base::msg::QueryMsg::Minter {};
+    let minter_res: cw20_base::msg::MinterResponse = from_binary(&query(deps.as_ref(), env, cw20_msg).unwrap()).unwrap();
+    assert_eq!(minter_res.minter, "creator");
+    assert_eq!(minter_res.cap.unwrap(), Uint128::from(TOKEN_TOTAL_SUPPLY));
+}
+
+}
