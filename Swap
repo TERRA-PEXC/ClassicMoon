@@ -1,0 +1,63 @@
+// 1. Create a new Rust module for the liquidity pool smart contract:
+
+pub mod liquidity_pool;
+
+// 2. Define a new struct for the liquidity pool state, including the community events wallet address and any other required data:
+
+pub struct LiquidityPoolState {
+    pub clsm_balance: Uint128,
+    pub lunc_balance: Uint128,
+    pub community_events_wallet: Addr,
+}
+
+// 3. Implement functions for adding and removing liquidity, as well as swapping tokens:
+
+pub fn add_liquidity(
+    deps: DepsMut,
+    env: Env,
+    clsm_amount: Uint128,
+    lunc_amount: Uint128,
+) -> Result<Response, ContractError> {
+    // Implementation
+}
+
+pub fn remove_liquidity(
+    deps: DepsMut,
+    env: Env,
+    clsm_amount: Uint128,
+    lunc_amount: Uint128,
+) -> Result<Response, ContractError> {
+    // Implementation
+}
+
+pub fn swap_tokens(
+    deps: DepsMut,
+    env: Env,
+    sender: Addr,
+    input_token: Addr,
+    output_token: Addr,
+    input_amount: Uint128,
+) -> Result<Response, ContractError> {
+    // Implementation
+}
+
+// 4. In the token swap function, calculate the 0.1% swap fee, split it into two parts (50% for burning and 50% for the community events wallet), and perform the corresponding token transfers:
+
+// Calculate swap fee (0.1%)
+let swap_fee = input_amount * Decimal::percent(0.1);
+
+// Calculate token amounts to burn and to send to the community events wallet
+let burn_amount = swap_fee * Decimal::percent(50);
+let community_events_amount = swap_fee * Decimal::percent(50);
+
+// Burn tokens and send the remaining fee to the community events wallet
+burn_tokens(&burn_amount)?;
+transfer_to_community_events_wallet(&community_events_amount)?;
+
+// 5. Update the tests module to cover the new functionality:
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    // Test cases for add_liquidity, remove_liquidity, and swap_tokens functions
+}
