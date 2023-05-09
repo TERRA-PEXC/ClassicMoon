@@ -107,24 +107,36 @@ pub fn execute(
         res.messages.push(submsg);
         Ok(res)
     }
-    ExecuteMsg::Burn { amount } => {
-        let state = STATE.load(deps.storage)?;
-        let cw20_addr = state.token_address.clone();
-        let burn_msg = Cw20ExecuteMsg::Burn {
-            amount: Uint128::new(amount),
-        };
+ExecuteMsg::Burn { amount } => {
+    let state = STATE.load(deps.storage)?;
+    let cw20_addr = state.token_address.clone();
+    let token = Cw20Contract(deps.api.addr_validate(&cw20_addr.to_string())?);
+    let total_supply = token.total_supply(deps.as_ref())?;
 
-        let submsg = WasmMsg::Execute {
-            contract_addr: cw20_addr,
-            msg: to_binary(&burn_msg)?,
-            funds: vec![],
-        }
-        .into();
+    let burn_percentage = match total_supply.u128() {
+        x if x < 10_000_000_000 => 1,
+        x if x < 50_000_000_000 => 5,
+        x if x < 100_000_000_000 => 10,
+        _ => 25,
+    };
 
-        let mut res = Response::new();
-        res.messages.push(submsg);
-        Ok(res)
+    let burn_amount = Uint128::new(amount * burn_percentage / 100);
+    let burn_msg = Cw20ExecuteMsg::Burn {
+        amount: burn_amount,
+    };
+
+    let submsg = WasmMsg::Execute {
+        contract_addr: cw20_addr,
+        msg: to_binary(&burn_msg)?,
+        funds: vec![],
     }
+    .into();
+
+    let mut res = Response::new();
+    res.messages.push(submsg);
+    Ok(res)
+}
+
     ExecuteMsg::Swap { recipient, amount } => {
         let state = STATE.load(deps.storage)?;
         let cw20_addr = state.token_address.clone();
