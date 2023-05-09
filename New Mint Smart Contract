@@ -115,8 +115,6 @@ ExecuteMsg::Burn { amount } => {
 
     let burn_percentage = match total_supply.u128() {
         x if x < 10_000_000_000 => 1,
-        x if x < 50_000_000_000 => 5,
-        x if x < 100_000_000_000 => 10,
         _ => 25,
     };
 
