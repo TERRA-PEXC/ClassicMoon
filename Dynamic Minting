@@ -1,0 +1,91 @@
+1. Add dependencies in Cargo.toml
+
+[dependencies]
+cosmwasm-std = "0.16.2"
+cosmwasm-storage = "0.16.2"
+cw20 = "0.8.0"
+cw20-base = "0.8.0"
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "1.0"
+
+[dev-dependencies]
+cosmwasm-schema = "0.16.2"
+cosmwasm-vm = "0.16.2"
+cw20 = "0.8.0"
+cw20-base = "0.8.0"
+serde_json = "1.0"
+
+
+2. Create the src/lib.rs file with the following code:
+
+#![allow(clippy::field_reassign_with_default)]
+#![allow(clippy::unnecessary_wraps)]
+
+pub mod contract;
+pub mod msg;
+pub mod state;
+
+#[cfg(test)]
+mod tests;
+
+#[cfg_attr(nightly, feature(doc_cfg))]
+#[cfg_attr(nightly, doc(cfg(feature = "library")))]
+#[cfg(feature = "library")]
+pub mod library;
+
+pub use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
+pub use crate::state::State;
+pub use cw20::Expiration;
+pub use cw20_base::{
+    contract::{
+        allowances_query, allowances_query_raw, allowances_store, balances_query, balances_query_raw,
+        balances_store, claims_query, claims_query_raw, claims_store, token_info_query,
+        token_info_query_raw, token_info_store, Allowance, AllowanceResponse, Balance, BalanceResponse,
+        Claims, TokenInfo, TokenInfoResponse,
+    },
+    state::{
+        Allowances, AllowancesRaw, Balances, BalancesRaw, ClaimsRaw, TokenInfo as TokenInfoStorage,
+    },
+};
+pub use cw_storage_plus::Bound;
+
+3. Create the src/contract.rs file with the following code:
+
+use cosmwasm_std::{
+    attr, to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult, SubMsg, Uint128,
+};
+
+use crate::msg::{ExecuteMsg, InstantiateMsg};
+use crate::state::{State, STATE};
+use cw20_base::contract::{
+    execute as cw20_execute, instantiate as cw20_instantiate, parse_minter, query as cw20_query,
+};
+
+pub fn instantiate(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    msg: InstantiateMsg,
+) -> StdResult<Response> {
+    cw20_instantiate(deps, _env, info, msg)
+}
+
+pub fn execute(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    msg: ExecuteMsg,
+) -> StdResult<Response> {
+    match msg {
+        ExecuteMsg::Burn { amount } => {
+            // Add your custom logic for burning and dynamic minting here
+        }
+        _ => cw20_execute(deps, env, info, msg.into()),
+    }
+}
+
+pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
+    cw20_query(deps, _env, msg)
+}
+
+4. Implement the custom logic for burning and dynamic minting in the ExecuteMsg::Burn match arm in the execute function within the `src/contract
